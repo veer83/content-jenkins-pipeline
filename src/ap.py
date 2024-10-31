@@ -9,10 +9,10 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Paths to scripts
-login_script_path = ""
-list_products_script_path = "."
-get_swagger_script_path = "."
-get_all_catalog_script_path = ""
+login_script_path = "./apic_login.sh"
+list_products_script_path = "./list_products.sh"
+get_swagger_script_path = "./get_swagger_by_name.sh"
+get_all_catalog_script_path = "./get_all_catalog_property.sh"
 
 # Product list file path
 PRODUCT_LIST_FILE = "/tmp/output"
@@ -27,6 +27,7 @@ def create_output_directory():
 # Step 1: Log in using `apic_login.sh`
 def login(env, username, password):
     login_command = [
+        "sudo",
         login_script_path,
         env,
         username,
@@ -44,6 +45,7 @@ def list_products(env, catalog, space):
     # Update PRODUCT_LIST_FILE path after generating the product list
     global PRODUCT_LIST_FILE
     list_products_command = [
+        "sudo",
         list_products_script_path, env,
         PRODUCT_LIST_FILE, "0", catalog, space
     ]
@@ -82,6 +84,7 @@ def download_swagger(env, catalog, product_list):
 
                     # Step 4: Run the `get_swagger_by_name.sh` script to download the Swagger file
                     get_swagger_command = [
+                        "sudo",
                         get_swagger_script_path,
                         env,  # Environment
                         f"{name}:{version}",
@@ -111,6 +114,7 @@ def download_swagger(env, catalog, product_list):
 # Step 4: Get Catalog Property
 def get_catalog_list(env):
     get_catalog_command = [
+        "sudo",
         get_all_catalog_script_path,
         env
     ]
@@ -128,6 +132,16 @@ def push_swagger_to_database():
     BASE_CURL_COMMAND = [
         "curl",
         "--request", "POST",
+        "--url", "https://sbx-shr-ue1-aws-apigw01.devhcloud.bmogc.net/sandbox/api/apic-doc/save",
+        "--header", "Content-Type: application/json",
+        "--header", "User-Agent: insomnia/10.0.0",
+        "--header", "x-api-key: jmr4sQU3NDSWVOLbyZSN",
+        "--header", "x-apigw-api-id: 68zrgpos7j",
+        "--header", "x-app-cat-id: sdsadas",
+        "--header", "x-database-schema: apic_sandbox",
+        "--header", "x-fapi-financial-id: sdsadsadasdsadsa",
+        "--header", "x-request-id: abcd",
+        "--insecure"  # Disable SSL verification
     ]
 
     # Iterate over each Swagger file in the directory
@@ -170,32 +184,48 @@ def push_swagger_to_database():
     print("Completed pushing all Swagger files.")
 
 # Step 6: Push Catalog result to the database
-def push_catalog_to_database(catalog_key, catalog_value, env, org):
+def push_catalog_to_database(env, catalog_list):
     BASE_CATALOG_CURL_COMMAND = [
         "curl",
         "--request", "POST",
+        "--url", "https://sbx-shr-ue1-aws-apigw01.devhcloud.bmogc.net/sandbox/api/apic-catalogue/save",
+        "--header", "Content-Type: application/json",
+        "--header", "User-Agent: insomnia/10.0.0",
+        "--header", "x-api-key: jmr4sQU3NDSWVOLbyZSN",
+        "--header", "x-apigw-api-id: 68zrgpos7j",
+        "--header", "x-app-cat-id: sdsadas",
+        "--header", "x-database-schema: apic_sandbox",
+        "--header", "x-fapi-financial-id: sdsadsadasdsadsa",
+        "--header", "x-request-id: abcd",
+        "--insecure"  # Disable SSL verification
     ]
 
-    # Prepare JSON data to be posted
-    post_data = [{
-        "cat_key": catalog_key,
-        "cat_value": catalog_value,
-        "env": env,
-        "org": org
-    }]
+    for catalog in catalog_list:
+        # Extract necessary fields from the catalog data
+        catalog_key = catalog.get('key', 'unknown_key')
+        catalog_value = catalog.get('value', 'unknown_value')
+        org = catalog.get('org', 'unknown_org')
 
-    # Convert the dictionary to JSON format
-    json_data = json.dumps(post_data, indent=4)
+        # Prepare JSON data to be posted
+        post_data = [{
+            "cat_key": catalog_key,
+            "cat_value": catalog_value,
+            "env": env,
+            "org": org
+        }]
 
-    # Add the data to the curl command
-    curl_command = BASE_CATALOG_CURL_COMMAND + ["--data", json_data]
+        # Convert the dictionary to JSON format
+        json_data = json.dumps(post_data, indent=4)
 
-    # Execute the curl command
-    try:
-        subprocess.run(curl_command, check=True)
-        print(f"Successfully pushed catalog data for key: {catalog_key}")
-    except subprocess.CalledProcessError as e:
-        print(f"Error pushing catalog data for key: {catalog_key} - {e}")
+        # Add the data to the curl command
+        curl_command = BASE_CATALOG_CURL_COMMAND + ["--data", json_data]
+
+        # Execute the curl command
+        try:
+            subprocess.run(curl_command, check=True)
+            print(f"Successfully pushed catalog data for key: {catalog_key}")
+        except subprocess.CalledProcessError as e:
+            print(f"Error pushing catalog data for key: {catalog_key} - {e}")
 
 def main():
     # Step 0: Create output directory
@@ -234,7 +264,7 @@ def main():
     push_swagger_to_database()
 
     # Step 7: Push catalog result to the database
-        push_catalog_to_database()
+    push_catalog_to_database(env, catalog_list)
 
 if __name__ == "__main__":
     main()
