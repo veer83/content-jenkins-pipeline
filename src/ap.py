@@ -9,10 +9,7 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Paths to scripts
-login_script_path = "./apic_login.sh"
-list_products_script_path = "./list_products.sh"
-get_swagger_script_path = "./get_swagger_by_name.sh"
-get_all_catalog_script_path = "./get_all_catalog_property.sh"
+
 
 # Product list file path
 PRODUCT_LIST_FILE = "/tmp/output"
@@ -128,22 +125,7 @@ def get_catalog_list(env):
 
 # Step 5: Push Swagger files to the database
 def push_swagger_to_database():
-    # Base cURL command components
-    BASE_CURL_COMMAND = [
-        "curl",
-        "--request", "POST",
-        "--url", "https://sbx-shr-ue1-aws-apigw01.devhcloud.bmogc.net/sandbox/api/apic-doc/save",
-        "--header", "Content-Type: application/json",
-        "--header", "User-Agent: insomnia/10.0.0",
-        "--header", "x-api-key: jmr4sQU3NDSWVOLbyZSN",
-        "--header", "x-apigw-api-id: 68zrgpos7j",
-        "--header", "x-app-cat-id: sdsadas",
-        "--header", "x-database-schema: apic_sandbox",
-        "--header", "x-fapi-financial-id: sdsadsadasdsadsa",
-        "--header", "x-request-id: abcd",
-        "--insecure"  # Disable SSL verification
-    ]
-
+    
     # Iterate over each Swagger file in the directory
     for filename in os.listdir(PRODUCT_LIST_FILE):
         if filename.endswith(".json"):
@@ -184,21 +166,7 @@ def push_swagger_to_database():
     print("Completed pushing all Swagger files.")
 
 # Step 6: Push Catalog result to the database
-def push_catalog_to_database(env, catalog_list):
-    BASE_CATALOG_CURL_COMMAND = [
-        "curl",
-        "--request", "POST",
-        "--url", "https://sbx-shr-ue1-aws-apigw01.devhcloud.bmogc.net/sandbox/api/apic-catalogue/save",
-        "--header", "Content-Type: application/json",
-        "--header", "User-Agent: insomnia/10.0.0",
-        "--header", "x-api-key: jmr4sQU3NDSWVOLbyZSN",
-        "--header", "x-apigw-api-id: 68zrgpos7j",
-        "--header", "x-app-cat-id: sdsadas",
-        "--header", "x-database-schema: apic_sandbox",
-        "--header", "x-fapi-financial-id: sdsadsadasdsadsa",
-        "--header", "x-request-id: abcd",
-        "--insecure"  # Disable SSL verification
-    ]
+
 
     for catalog in catalog_list:
         # Extract necessary fields from the catalog data
