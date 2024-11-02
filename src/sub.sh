@@ -17,7 +17,7 @@ catalog_name = input("Enter the catalog name: ").strip()
 org = "api"  # Set the default org value
 
 # Path to the shell script
-script_path = "./get_all_catalog_property.sh"
+script_path = "./.sh"
 
 # Run the shell script with sudo and capture output
 try:
