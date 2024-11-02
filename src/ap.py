@@ -1,238 +1,142 @@
-import subprocess
 import os
-import yaml
-import getpass
+import subprocess
 import json
 import logging
+from datetime import datetime
+from getpass import getuser
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+log_dir = "./logs"
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
 
-# Paths to scripts
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),  # Log to console
+        logging.FileHandler(f"{log_dir}/script_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+    ]
+)
 
+# API endpoint and headers
+api_url = "https://sbx-shr-ue1-aws-apigw01.devhcloud.bmogc.net/sandbox/api/apic-catalogue/save"
+headers = {
+    "Content-Type": "application/json",
+    "User-Agent": "",
+    "x-api-key": "",
+    "x-apigw-api-id": "",
+    "x-app-cat-id": "sdsadas",
+    "x-database-schema": "",
+    "x-fapi-financial-id": "sdsadsadasdsadsa",
+    "x-request-id": "abcd"
+}
 
-# Product list file path
-PRODUCT_LIST_FILE = "/tmp/output"
+# Get user inputs
+env = input("Enter the environment (e.g., dv1, qa, prod): ").strip().lower()
+catalog_name = input("Enter the catalog name: ").strip()
+org = "api"
 
-# Step 0: Create output directory
-def create_output_directory():
-    output_dir = "/tmp/output/"
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-        print(f"Created output directory at {output_dir}")
+# Shell script path and output directory
+script_path = "./g"
+output_dir = "/tmp/output"
 
-# Step 1: Log in using `apic_login.sh`
-def login(env, username, password):
-    login_command = [
-        "sudo",
-        login_script_path,
-        env,
-        username,
-        password
+def run_shell_script():
+    """Runs the shell script to generate the output file."""
+    try:
+        subprocess.run(["sudo", script_path, env, output_dir, catalog_name], check=True)
+        logging.info("Shell script executed successfully.")
+    except subprocess.CalledProcessError as e:
+        logging.error("Failed to run shell script.")
+        logging.error(e)
+        raise
+
+def change_file_ownership(file_path):
+    """Changes file ownership to the current user to avoid further sudo usage."""
+    try:
+        subprocess.run(["sudo", "chown", f"{getuser()}:{getuser()}", file_path], check=True)
+        logging.info(f"Changed ownership of {file_path} to current user.")
+    except subprocess.CalledProcessError as e:
+        logging.error("Failed to change file ownership.")
+        logging.error(e)
+        raise
+
+def read_file(file_path):
+    """Reads and processes each line from the output file."""
+    with open(file_path, "r") as file:
+        lines = file.readlines()
+    return lines
+
+def send_post_request(data):
+    """Sends a POST request to the API with provided data using curl."""
+    curl_command = [
+        "sudo", "curl", "--insecure", "--request", "POST",
+        "--url", api_url,
+        "--header", f"Content-Type: {headers['Content-Type']}",
+        "--header", f"User-Agent: {headers['User-Agent']}",
+        "--header", f"x-api-key: {headers['x-api-key']}",
+        "--header", f"x-apigw-api-id: {headers['x-apigw-api-id']}",
+        "--header", f"x-app-cat-id: {headers['x-app-cat-id']}",
+        "--header", f"x-database-schema: {headers['x-database-schema']}",
+        "--header", f"x-fapi-financial-id: {headers['x-fapi-financial-id']}",
+        "--header", f"x-request-id: {headers['x-request-id']}",
+        "--data", json.dumps(data)
     ]
     try:
-        subprocess.run(login_command, check=True)
-        print("Login successful.")
+        subprocess.run(curl_command, check=True)
+        logging.info(f"POST request successful for cat_key: {data['cat_key']}")
     except subprocess.CalledProcessError as e:
-        print(f"Error during login: {e}")
-        exit(1)
-
-# Step 2: Run `list_products.sh` after logging in successfully
-def list_products(env, catalog, space):
-    # Update PRODUCT_LIST_FILE path after generating the product list
-    global PRODUCT_LIST_FILE
-    list_products_command = [
-        "sudo",
-        list_products_script_path, env,
-        PRODUCT_LIST_FILE, "0", catalog, space
-    ]
-    try:
-        subprocess.run(list_products_command, check=True)
-        print("Product list downloaded successfully.")
-    except subprocess.CalledProcessError as e:
-        print(f"Error downloading product list: {e}")
-        exit(1)
-
-# Step 3: Load the product list and download Swagger files
-def load_product_list(file_path):
-    file_path = os.path.join(PRODUCT_LIST_FILE, "ProductList.yaml")
-    if not os.path.exists(file_path):
-        print(f"Error: Product list file not found at {file_path}.")
-        return None
-
-    with open(file_path, 'r') as f:
-        data = yaml.safe_load(f)
-        if not data:
-            print("Error: Product list is empty or could not be loaded properly.")
-            return None
-        return data
-
-def download_swagger(env, catalog, product_list):
-    for product in product_list.get('results', []):
-        plans = product.get('plans', [])
-        for plan in plans:
-            apis = plan.get('apis', [])
-            for api in apis:
-                # Extract API name and version
-                name = api.get('name')
-                version = api.get('version')
-                if name and version:
-                    print(f"Downloading Swagger for {name}:{version}")
-
-                    # Step 4: Run the `get_swagger_by_name.sh` script to download the Swagger file
-                    get_swagger_command = [
-                        "sudo",
-                        get_swagger_script_path,
-                        env,  # Environment
-                        f"{name}:{version}",
-                        catalog  # Catalog name
-                    ]
-
-                    try:
-                        swagger_output_file = os.path.join(PRODUCT_LIST_FILE, f"{name}_{version}.json")
-                        result = subprocess.run(get_swagger_command, capture_output=True, text=True, check=True)
-                        swagger_lines = []
-                        capture = False
-                        for line in result.stdout.splitlines():
-                            if 'openapi' in line or 'swagger' in line:
-                                capture = True
-                            if capture:
-                                swagger_lines.append(line)
-
-                        if swagger_lines:
-                            with open(swagger_output_file, 'w') as output_file:
-                                output_file.write("\n".join(swagger_lines))
-                                print(f"Swagger downloaded for {name}:{version} and saved to {swagger_output_file}")
-                        else:
-                            print(f"Error downloading Swagger for {name}:{version}")
-                    except subprocess.CalledProcessError as e:
-                        print(f"Error downloading Swagger for {name}:{version} - {e}")
-
-# Step 4: Get Catalog Property
-def get_catalog_list(env):
-    get_catalog_command = [
-        "sudo",
-        get_all_catalog_script_path,
-        env
-    ]
-    try:
-        result = subprocess.run(get_catalog_command, capture_output=True, text=True, check=True)
-        catalog_list = result.stdout.splitlines()
-        return [catalog.strip() for catalog in catalog_list if catalog.strip()]
-    except subprocess.CalledProcessError as e:
-        print(f"Error retrieving catalog list: {e}")
-        return []
-
-# Step 5: Push Swagger files to the database
-def push_swagger_to_database():
-    
-    # Iterate over each Swagger file in the directory
-    for filename in os.listdir(PRODUCT_LIST_FILE):
-        if filename.endswith(".json"):
-            swagger_file_path = os.path.join(PRODUCT_LIST_FILE, filename)
-
-            # Load Swagger file content
-            with open(swagger_file_path, "r") as f:
-                swagger_content = f.read()
-
-            # Extract product name and version from filename (assuming filename format: <name>_<version>.yaml)
-            try:
-                product_name, product_version = filename.rsplit("_", 1)
-                product_version = product_version.replace(".json", "")
-            except ValueError:
-                print(f"Invalid filename format: {filename}. Skipping...")
-                continue
-
-            # Prepare JSON data to be posted
-            post_data = [{
-                "product": product_name,
-                "product_version": product_version,
-                "swagger": swagger_content
-            }]
-
-            # Convert the dictionary to JSON format
-            json_data = json.dumps(post_data, indent=4)
-
-            # Add the data to the curl command
-            curl_command = BASE_CURL_COMMAND + ["--data", json_data]
-
-            # Execute the curl command
-            try:
-                subprocess.run(curl_command, check=True)
-                print(f"Successfully pushed Swagger file: {filename}")
-            except subprocess.CalledProcessError as e:
-                print(f"Error pushing Swagger file: {filename} - {e}")
-
-    print("Completed pushing all Swagger files.")
-
-# Step 6: Push Catalog result to the database
-
-
-    for catalog in catalog_list:
-        # Extract necessary fields from the catalog data
-        catalog_key = catalog.get('key', 'unknown_key')
-        catalog_value = catalog.get('value', 'unknown_value')
-        org = catalog.get('org', 'unknown_org')
-
-        # Prepare JSON data to be posted
-        post_data = [{
-            "cat_key": catalog_key,
-            "cat_value": catalog_value,
-            "env": env,
-            "org": org
-        }]
-
-        # Convert the dictionary to JSON format
-        json_data = json.dumps(post_data, indent=4)
-
-        # Add the data to the curl command
-        curl_command = BASE_CATALOG_CURL_COMMAND + ["--data", json_data]
-
-        # Execute the curl command
-        try:
-            subprocess.run(curl_command, check=True)
-            print(f"Successfully pushed catalog data for key: {catalog_key}")
-        except subprocess.CalledProcessError as e:
-            print(f"Error pushing catalog data for key: {catalog_key} - {e}")
+        logging.error(f"Failed POST request for cat_key: {data['cat_key']}")
+        logging.error(e)
 
 def main():
-    # Step 0: Create output directory
-    create_output_directory()
+    # Run shell script to generate the output file
+    run_shell_script()
 
-    # Collect user input for environment, space, and catalog
-    env = input("Enter environment (e.g., dev, prod): ").strip()
-    username = input("Enter username: ").strip()
-    password = getpass.getpass("Enter password: ")
+    # Locate output file created by the shell script
+    output_files = os.listdir(output_dir)
+    if not output_files:
+        logging.error("No files found in the output directory.")
+        return
+    output_file = os.path.join(output_dir, output_files[0])
+    logging.info(f"Found output file: {output_file}")
 
-    # Step 1: Log in
-    login(env, username, password)
+    # Change ownership of the output file to avoid using sudo
+    change_file_ownership(output_file)
 
-    # Step 2: Get the catalog list
-    catalog_list = get_catalog_list(env)
-    if not catalog_list:
-        print("Error: No catalogs found.")
-        exit(1)
+    # Read and process each line from the output file
+    lines = read_file(output_file)
+    error_log = []
 
-    for catalog in catalog_list:
-        space = input(f"Enter space name for catalog '{catalog}': ").strip()
+    for line in lines:
+        if ": " in line:
+            catalog_key, catalog_value = line.split(": ", 1)
+            catalog_value = catalog_value.strip()
 
-        # Step 3: Download the product list
-        list_products(env, catalog, space)
+            post_data = {
+                "cat_key": catalog_key.strip(),
+                "cat_value": catalog_value,
+                "env": env,
+                "org": org
+            }
 
-        # Step 4: Load the product list from the YAML file
-        product_list = load_product_list(PRODUCT_LIST_FILE)
-        if not product_list:
-            print("Error: Product list is empty or not loaded properly. Exiting.")
-            continue
+            # Log data to be sent
+            logging.info("Sending data to database:")
+            logging.info(json.dumps(post_data, indent=4))
 
-        # Step 5: Download Swagger files for each API
-        download_swagger(env, catalog, product_list)
+            # Send POST request and collect any errors
+            try:
+                send_post_request(post_data)
+            except Exception as e:
+                error_log.append(f"Error with cat_key {catalog_key.strip()}: {str(e)}")
 
-    # Step 6: Push Swagger files to the database
-    push_swagger_to_database()
-
-    # Step 7: Push catalog result to the database
-    push_catalog_to_database(env, catalog_list)
+    # Log summary of errors, if any
+    if error_log:
+        logging.error("Errors encountered during POST requests:")
+        for error in error_log:
+            logging.error(error)
+    else:
+        logging.info("All POST requests completed successfully.")
 
 if __name__ == "__main__":
     main()
