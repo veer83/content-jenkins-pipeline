@@ -15,7 +15,7 @@ catalog_name = input("Enter the catalog name: ").strip()
 org = "api"  # Set the default org value
 
 # Path to the shell script
-script_path = "."
+script_path = "..sh"
 
 # Run the shell script with sudo to generate the file
 try:
@@ -36,12 +36,32 @@ try:
     output_file = os.path.join(output_dir, output_files[0])
     print(f"Found output file: {output_file}")
 
-    # Append the additional key-value pairs for env and org
-    with open(output_file, "a") as file:
-        file.write(f"\nenv: '{env}'\n")
-        file.write(f"org: '{org}'\n")
+    # Read the content of the file with sudo and process each line
+    result = subprocess.run(
+        ["sudo", "cat", output_file],
+        text=True,
+        capture_output=True,
+        check=True
+    )
+    
+    # Process each line and add env/org
+    updated_lines = []
+    for line in result.stdout.splitlines():
+        if ": " in line:  # Ensure we're processing key-value pairs
+            catalog_key, catalog_value = line.split(": ", 1)
+            catalog_value = catalog_value.strip()  # Remove any extraneous whitespace
+            # Append env and org information to each line
+            updated_line = f"{catalog_key}: {catalog_value}, env: '{env}', org: '{org}'\n"
+            updated_lines.append(updated_line)
+        else:
+            # If it's not a key-value pair, keep the line as-is
+            updated_lines.append(line)
 
-    print(f"Updated {output_file} with env and org values.")
+    # Write the updated lines back to the file with sudo
+    with subprocess.Popen(["sudo", "tee", output_file], stdin=subprocess.PIPE, text=True) as file:
+        file.writelines(updated_lines)
+
+    print(f"Updated {output_file} with env and org for each cat_key and cat_value.")
 
 except subprocess.CalledProcessError as e:
     print(f"An error occurred: {e}")
