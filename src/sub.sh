@@ -1,13 +1,9 @@
 import os
 import subprocess
+import json
 
-# Define output directory
-output_dir = "/tmp/output"
-
-# Check if the directory exists; if not, create it
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
-    print(f"Created directory: {output_dir}")
+# Define the API endpoint and headers
+api_url = ""
 
 # Prompt the user for inputs
 env = input("Enter the environment (e.g., dv1, qa, prod): ").strip().lower()
@@ -15,7 +11,8 @@ catalog_name = input("Enter the catalog name: ").strip()
 org = "api"  # Set the default org value
 
 # Path to the shell script
-script_path = "..sh"
+script_path = "./"
+output_dir = "/tmp/output"
 
 # Run the shell script with sudo to generate the file
 try:
@@ -43,25 +40,39 @@ try:
         capture_output=True,
         check=True
     )
-    
-    # Process each line and add env/org
-    updated_lines = []
+
+    # Process each line and send a POST request with env/org
     for line in result.stdout.splitlines():
         if ": " in line:  # Ensure we're processing key-value pairs
             catalog_key, catalog_value = line.split(": ", 1)
             catalog_value = catalog_value.strip()  # Remove any extraneous whitespace
-            # Append env and org information to each line
-            updated_line = f"{catalog_key}: {catalog_value}, env: '{env}', org: '{org}'\n"
-            updated_lines.append(updated_line)
-        else:
-            # If it's not a key-value pair, keep the line as-is
-            updated_lines.append(line)
 
-    # Write the updated lines back to the file with sudo
-    with subprocess.Popen(["sudo", "tee", output_file], stdin=subprocess.PIPE, text=True) as file:
-        file.writelines(updated_lines)
+            # Prepare the data to send in the POST request
+            post_data = {
+                "cat_key": catalog_key.strip(),
+                "cat_value": catalog_value,
+                "env": env,
+                "org": org
+            }
 
-    print(f"Updated {output_file} with env and org for each cat_key and cat_value.")
+            # Use curl to send POST request with sudo and --insecure
+            curl_command = [
+                "sudo", "curl", "--insecure", "--request", "POST",
+                "--url", api_url,
+                "--header", "Content-Type: application/json",
+                "--header", "User-Agent: ",
+                "--header", "x-api-key: ",
+                "--header", "x-apigw-api-id: ",
+                "--header", "x-app-cat-id: sdsadas",
+                "--header", "x-database-schema: ",
+                "--header", "x-fapi-financial-id: sdsadsadasdsadsa",
+                "--header", "x-request-id: abcd",
+                "--data", json.dumps(post_data)
+            ]
+
+            # Run the curl command
+            subprocess.run(curl_command, check=True)
+            print(f"Sent POST request for cat_key: {catalog_key.strip()}")
 
 except subprocess.CalledProcessError as e:
     print(f"An error occurred: {e}")
