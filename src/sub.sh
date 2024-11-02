@@ -1,10 +1,8 @@
 import os
 import subprocess
-import json
 
-# Define output directory and JSON output file
+# Define output directory
 output_dir = "/tmp/output"
-json_output_file = os.path.join(output_dir, "catalog_properties.json")
 
 # Check if the directory exists; if not, create it
 if not os.path.exists(output_dir):
@@ -17,34 +15,33 @@ catalog_name = input("Enter the catalog name: ").strip()
 org = "api"  # Set the default org value
 
 # Path to the shell script
-script_path = "./.sh"
+script_path = "."
 
-# Run the shell script with sudo and capture output
+# Run the shell script with sudo to generate the file
 try:
-    result = subprocess.run(
+    subprocess.run(
         ["sudo", script_path, env, output_dir, catalog_name],
-        text=True,  # Capture output as a string
-        capture_output=True,
+        text=True,
         check=True
     )
 
-    # Process the output, assuming YAML key-value pairs format
-    properties = []
-    for line in result.stdout.splitlines():
-        if ": " in line:
-            catalog_key, catalog_value = line.split(": ", 1)
-            properties.append({
-                "cat_key": catalog_key.strip(),
-                "cat_value": catalog_value.strip(),
-                "env": env,
-                "org": org
-            })
+    # Find the output file created by the shell script
+    output_files = os.listdir(output_dir)
+    if not output_files:
+        print("Error: No files found in the output directory.")
+        exit(1)
 
-    # Write to JSON file
-    with open(json_output_file, "w") as json_file:
-        json.dump(properties, json_file, indent=4)
+    # Assuming the shell script creates only one file in the output directory,
+    # we select the first file found.
+    output_file = os.path.join(output_dir, output_files[0])
+    print(f"Found output file: {output_file}")
 
-    print(f"Output saved to {json_output_file}")
+    # Append the additional key-value pairs for env and org
+    with open(output_file, "a") as file:
+        file.write(f"\nenv: '{env}'\n")
+        file.write(f"org: '{org}'\n")
+
+    print(f"Updated {output_file} with env and org values.")
 
 except subprocess.CalledProcessError as e:
     print(f"An error occurred: {e}")
